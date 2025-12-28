@@ -1,4 +1,4 @@
-Flask
-pywhatkit
-pandas
-openpyxl
+Flask==3.0.0
+pywhatkit==5.4
+pyautogui==0.9.54
+keyboard==0.13.5

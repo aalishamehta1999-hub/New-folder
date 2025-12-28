@@ -1,45 +1,363 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Job Status</title>
-<script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Status - WhatsApp Sender</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-badge {
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+
+        .status-queued {
+            background: #ffc107;
+            color: #000;
+        }
+
+        .status-running {
+            background: #17a2b8;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .status-finished {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-failed {
+            background: #dc3545;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .logs-section {
+            margin-top: 30px;
+        }
+
+        .logs-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logs-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+        }
+
+        .log-entry:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            border-top: 2px solid #e9ecef;
+            color: #6c757d;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 30px;
+        }
+
+        .footer .heart {
+            color: #dc3545;
+            animation: heartbeat 1.5s ease-in-out infinite;
+        }
+
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            25% { transform: scale(1.1); }
+            50% { transform: scale(1); }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
-  <div class="bg-white shadow-xl rounded-2xl w-full max-w-4xl p-6">
-    <h1 class="text-3xl font-bold text-green-600 mb-4 text-center">Job Status</h1>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Job Status Monitor</h1>
+            <p>Job ID: <span id="jobId">{{ job_id }}</span></p>
+        </div>
 
-    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 h-96 overflow-y-auto">
-      <pre id="logs" class="text-gray-800 whitespace-pre-wrap"></pre>
+        <div class="content">
+            <div class="status-card">
+                <div class="status-header">
+                    <h2>Status</h2>
+                    <span class="status-badge" id="statusBadge">Loading...</span>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="info-label">Total Contacts</div>
+                        <div class="info-value" id="totalRows">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Total Messages</div>
+                        <div class="info-value" id="totalMessages">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Created At</div>
+                        <div class="info-value" id="createdAt">-</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Started At</div>
+                        <div class="info-value" id="startedAt">-</div>
+                    </div>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="logs-section">
+                <div class="logs-header">
+                    📝 Live Logs
+                    <span style="font-size: 12px; font-weight: 400; color: #6c757d;">(Auto-refreshing)</span>
+                </div>
+                <div class="logs-container" id="logsContainer">
+                    <div class="log-entry">Waiting for logs...</div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="/" class="btn btn-primary">🏠 Back to Home</a>
+                <button class="btn btn-primary" onclick="refreshLogs()">🔄 Refresh Now</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            Made with <span class="heart">❤️</span> for Saahisha
+        </div>
     </div>
 
-    <div class="mt-4 flex justify-between items-center">
-      <span class="text-gray-600 font-medium">Status:</span>
-      <span id="status" class="font-bold text-green-600"></span>
-      <span class="text-gray-600 font-medium">Progress:</span>
-      <span id="progress-text" class="font-bold text-green-600"></span>
-    </div>
+    <script>
+        const jobId = '{{ job_id }}';
+        let lastLogCount = 0;
 
-    <div class="mt-2 w-full bg-gray-200 rounded-full h-4">
-      <div id="progress-bar" class="bg-green-500 h-4 rounded-full w-0"></div>
-    </div>
-  </div>
+        async function fetchStatus() {
+            try {
+                const response = await fetch(`/status/${jobId}/logs`);
+                const data = await response.json();
 
-<script>
-async function refresh() {
-  const res = await fetch('/status/{{ job_id }}/logs');
-  const data = await res.json();
-  document.getElementById('status').innerText = data.status || '';
-  const logs = (data.logs || []);
-  document.getElementById('logs').innerText = logs.join('\n');
+                if (data.error) {
+                    document.getElementById('logsContainer').innerHTML = 
+                        `<div class="log-entry" style="color: #f44336;">❌ ${data.error}</div>`;
+                    return;
+                }
 
-  const progress = data.progress || 0;
-  document.getElementById('progress-bar').style.width = progress + '%';
-  document.getElementById('progress-text').innerText = progress + '%';
-}
-setInterval(refresh, 2000);
-window.onload = refresh;
-</script>
+                // Update status badge
+                const status = data.status || 'unknown';
+                const badge = document.getElementById('statusBadge');
+                badge.textContent = status;
+                badge.className = 'status-badge status-' + status;
+
+                // Update info
+                document.getElementById('totalRows').textContent = data.total_rows || '-';
+                document.getElementById('totalMessages').textContent = data.total_messages || '-';
+                document.getElementById('createdAt').textContent = data.created_at || '-';
+                document.getElementById('startedAt').textContent = data.started_at || '-';
+
+                // Update logs
+                if (data.logs && data.logs.length > 0) {
+                    const logsContainer = document.getElementById('logsContainer');
+                    
+                    // Only update if new logs
+                    if (data.logs.length !== lastLogCount) {
+                        logsContainer.innerHTML = data.logs
+                            .map(log => `<div class="log-entry">${escapeHtml(log)}</div>`)
+                            .join('');
+                        
+                        // Auto-scroll to bottom
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                        lastLogCount = data.logs.length;
+                    }
+
+                    // Calculate progress
+                    const progress = Math.min(100, (data.logs.length / (data.total_rows * data.total_messages || 1)) * 100);
+                    document.getElementById('progressFill').style.width = progress + '%';
+                }
+
+                // Stop polling if finished or failed
+                if (status === 'finished' || status === 'failed') {
+                    clearInterval(window.pollInterval);
+                }
+
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function refreshLogs() {
+            fetchStatus();
+        }
+
+        // Initial fetch
+        fetchStatus();
+
+        // Poll every 2 seconds
+        window.pollInterval = setInterval(fetchStatus, 2000);
+    </script>
 </body>
 </html>
