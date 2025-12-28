@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WhatsApp Scheduler</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+let tableData = [];
+
+function addBlock() {
+  const c = document.getElementById('blocks');
+  const i = c.children.length;
+  c.innerHTML += `
+  <div class="bg-gray-50 p-4 rounded-xl shadow">
+    <textarea name="messages[${i}][text]" class="w-full p-2 border rounded" required>
+Hello {Name}
+    </textarea>
+    <input type="datetime-local" name="messages[${i}][datetime]" class="mt-2 w-full p-2 border rounded" required>
+  </div>`;
+}
+
+function renderTable() {
+  const t = document.getElementById('csv-preview');
+  t.innerHTML = '';
+  tableData.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    r.forEach((c, j) => {
+      const td = document.createElement('td');
+      td.contentEditable = true;
+      td.innerText = c;
+      td.className = 'border px-2 py-1';
+      td.oninput = e => tableData[i][j] = e.target.innerText;
+      tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+}
+
+function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  reader.onload = ev => {
+    if (ext === 'csv') {
+      tableData = ev.target.result.split('\n')
+        .filter(x => x.trim())
+        .map(r => r.split(','));
+    } else {
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      tableData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+    }
+    renderTable();
+  };
+
+  ext === 'csv' ? reader.readAsText(file) : reader.readAsArrayBuffer(file);
+}
+
+function submitForm(f) {
+  const h = document.createElement('textarea');
+  h.name = 'edited_table';
+  h.value = JSON.stringify(tableData);
+  h.style.display = 'none';
+  f.appendChild(h);
+  return true;
+}
+
+window.onload = addBlock;
+</script>
+</head>
+
+<body class="bg-gray-100 p-6">
+<div class="max-w-5xl mx-auto bg-white p-8 rounded-2xl shadow-xl">
+
+<h1 class="text-3xl font-bold text-center text-green-600 mb-6">
+WhatsApp Scheduler
+</h1>
+
+<form method="POST" enctype="multipart/form-data" onsubmit="return submitForm(this)">
+
+<input type="file" name="csvfile"
+ accept=".csv,.xls,.xlsx"
+ onchange="handleFileUpload(event)"
+ class="mb-4 w-full border p-2 rounded" required>
+
+<table class="w-full border mb-6">
+<thead>
+<tr class="bg-gray-200">
+<th>Name</th><th>Phone</th><th>Flag</th>
+</tr>
+</thead>
+<tbody id="csv-preview"></tbody>
+</table>
+
+<div id="blocks" class="space-y-4"></div>
+
+<button type="button" onclick="addBlock()"
+ class="bg-blue-500 text-white px-4 py-2 rounded">
++ Add Message
+</button>
+
+<button type="submit"
+ class="mt-6 w-full bg-green-600 text-white py-3 rounded-xl text-lg">
+Start Sending
+</button>
+
+</form>
+</div>
+</body>
+</html>
