@@ -3,13 +3,13 @@ import os, json, threading, uuid, csv
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from send_from_csv import run_send_job
+import openpyxl
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-in-production'
 
-# Configuration for file uploads
 UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'csv'}
+ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -19,28 +19,46 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def parse_csv_file(filepath):
-    """Parse CSV file and return rows"""
+    """Parse CSV file and return headers + rows"""
+    headers = []
     rows = []
     try:
         with open(filepath, 'r', encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile)
-            # Skip header if exists
-            header = next(reader, None)
+            headers = next(reader, [])
             
             for row in reader:
-                if len(row) >= 3:  # Need at least name, phone, flag
-                    # Phone can include country code (e.g., +1234567890 or 1234567890)
-                    phone = row[1].strip()
-                    
-                    rows.append([
-                        row[0].strip(),  # Name
-                        phone,           # Phone (with country code if provided)
-                        row[2].strip()   # Flag (0 or 1)
-                    ])
+                if len(row) >= 2:  # At least Name and Phone
+                    rows.append([cell.strip() for cell in row])
     except Exception as e:
         raise Exception(f"Error parsing CSV: {str(e)}")
     
-    return rows
+    return headers, rows
+
+def parse_xlsx_file(filepath):
+    """Parse XLSX/XLS file and return headers + rows"""
+    headers = []
+    rows = []
+    try:
+        workbook = openpyxl.load_workbook(filepath)
+        sheet = workbook.active
+        
+        # Get headers from first row
+        headers = [str(cell.value).strip() if cell.value else f"Column{i}" 
+                   for i, cell in enumerate(sheet[1], 1)]
+        
+        # Get data rows
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            if row and any(row):  # Skip empty rows
+                row_data = [str(cell).strip() if cell is not None else '' for cell in row]
+                if len(row_data) >= 2:  # At least Name and Phone
+                    rows.append(row_data)
+        
+        workbook.close()
+    except Exception as e:
+        raise Exception(f"Error parsing XLSX: {str(e)}")
+    
+    return headers, rows
 
 def launch_send_in_thread(job_id, params):
     def logger(line):
@@ -60,78 +78,119 @@ def launch_send_in_thread(job_id, params):
         job_store[job_id]['error'] = str(e)
 
 
+@app.route('/parse-excel', methods=['POST'])
+def parse_excel():
+    """Parse Excel/CSV file and return JSON data with headers"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file uploaded"}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({"success": False, "error": "No file selected"}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({"success": False, "error": "Invalid file type"}), 400
+        
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        
+        try:
+            if file_ext == 'csv':
+                headers, rows = parse_csv_file(filepath)
+            elif file_ext in ['xlsx', 'xls']:
+                headers, rows = parse_xlsx_file(filepath)
+            else:
+                return jsonify({"success": False, "error": "Unsupported file type"}), 400
+            
+            os.remove(filepath)
+            
+            if not rows:
+                return jsonify({"success": False, "error": "File is empty"}), 400
+            
+            # Identify category columns (columns after Name and Phone)
+            categories = []
+            if len(headers) > 2:
+                categories = headers[2:]  # All columns after Name and Phone
+            
+            return jsonify({
+                "success": True, 
+                "headers": headers,
+                "rows": rows,
+                "categories": categories
+            })
+            
+        except Exception as e:
+            try:
+                os.remove(filepath)
+            except:
+                pass
+            return jsonify({"success": False, "error": f"Error parsing file: {str(e)}"}), 400
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         try:
-            rows = []
-            
-            # Check for edited table data (from both CSV and manual entry)
+            # Get contact data
             edited_table = request.form.get('edited_table')
-            if edited_table:
-                rows = json.loads(edited_table)
-                
-                if not rows or len(rows) == 0:
-                    return jsonify({"error": "No contact data provided"}), 400
-            else:
-                # Fallback: Check if CSV file was uploaded (old flow)
-                if 'csv_file' in request.files:
-                    file = request.files['csv_file']
-                    if file and file.filename != '' and allowed_file(file.filename):
-                        filename = secure_filename(file.filename)
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        file.save(filepath)
-                        
-                        # Parse CSV file
-                        rows = parse_csv_file(filepath)
-                        
-                        if not rows or len(rows) == 0:
-                            return jsonify({"error": "CSV file is empty or invalid"}), 400
-                else:
-                    return jsonify({"error": "No contact data provided"}), 400
+            if not edited_table:
+                return jsonify({"error": "No contact data provided"}), 400
+            
+            contact_data = json.loads(edited_table)
+            rows = contact_data.get('rows', [])
+            headers = contact_data.get('headers', [])
+            
+            if not rows:
+                return jsonify({"error": "No contacts provided"}), 400
 
-            # Build messages list
-            messages = []
+            # Get filter-based message mappings
+            filter_messages = []
             i = 0
-            while f'messages[{i}][text]' in request.form:
-                msg_text = request.form.get(f'messages[{i}][text]', '').strip()
-                msg_datetime = request.form.get(f'messages[{i}][datetime]', '').strip()
+            while f'filter_messages[{i}][filters]' in request.form:
+                filters_json = request.form.get(f'filter_messages[{i}][filters]')
+                message_text = request.form.get(f'filter_messages[{i}][message]', '').strip()
+                datetime_val = request.form.get(f'filter_messages[{i}][datetime]', '').strip()
                 
-                if msg_text and msg_datetime:
-                    messages.append({
-                        "template": msg_text,
-                        "send_datetime": msg_datetime
+                if filters_json and message_text and datetime_val:
+                    filter_messages.append({
+                        "filters": json.loads(filters_json),
+                        "template": message_text,
+                        "send_datetime": datetime_val
                     })
                 i += 1
 
-            if not messages:
-                return jsonify({"error": "No messages configured"}), 400
+            if not filter_messages:
+                return jsonify({"error": "No message filters configured"}), 400
 
             # Write messages_db.json
             os.makedirs('data', exist_ok=True)
             messages_file = os.path.join('data', 'messages_db.json')
             with open(messages_file, 'w', encoding='utf-8') as f:
-                json.dump({"web": messages}, f, indent=2, ensure_ascii=False)
+                json.dump({"filter_mappings": filter_messages}, f, indent=2, ensure_ascii=False)
 
             # Job parameters
             params = {
-                "edited_rows": rows,
+                "rows": rows,
+                "headers": headers,
+                "filter_messages": filter_messages,
                 "messages_db": messages_file,
-                "template_key": "web",
-                "name_col": 0,
-                "phone_col": 1,
-                "flag_col": 2,
-                "country_code": '',  # No default country code
-                "wait_time": int(request.form.get('wait_time', 10)),
-                "use_country_code": False  # Always use phone numbers as-is
+                "wait_time": int(request.form.get('wait_time', 10))
             }
 
             job_id = str(uuid.uuid4())
             job_store[job_id] = {
-                "logs": [f"✅ Job {job_id} created with {len(rows)} contacts"],
+                "logs": [f"✅ Job {job_id} created with {len(rows)} contacts and {len(filter_messages)} message filters"],
                 "status": "queued",
                 "total_rows": len(rows),
-                "total_messages": len(messages),
+                "total_filters": len(filter_messages),
                 "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
 
@@ -143,8 +202,8 @@ def index():
 
             return jsonify({"success": True, "job_id": job_id})
 
-        except json.JSONDecodeError:
-            return jsonify({"error": "Invalid data format"}), 400
+        except json.JSONDecodeError as e:
+            return jsonify({"error": f"Invalid data format: {str(e)}"}), 400
         except Exception as e:
             return jsonify({"error": f"Server error: {str(e)}"}), 500
 
@@ -174,6 +233,95 @@ def list_jobs():
         }
         for job_id, info in job_store.items()
     })
+
+
+@app.route('/preview-filter', methods=['POST'])
+def preview_filter():
+    """Preview which contacts match a specific filter"""
+    try:
+        data = request.json
+        filters = data.get('filters', {})
+        headers = data.get('headers', [])
+        rows = data.get('rows', [])
+        
+        matched_contacts = []
+        
+        for row in rows:
+            match = True
+            for category, required_value in filters.items():
+                col_idx = headers.index(category) if category in headers else -1
+                if col_idx == -1 or col_idx >= len(row):
+                    match = False
+                    break
+                
+                cell_value = str(row[col_idx]).strip()
+                if cell_value.upper() != required_value.upper():
+                    match = False
+                    break
+            
+            if match:
+                matched_contacts.append({
+                    'name': row[0] if len(row) > 0 else '',
+                    'phone': row[1] if len(row) > 1 else ''
+                })
+        
+        return jsonify({
+            "success": True,
+            "matched_count": len(matched_contacts),
+            "matched_contacts": matched_contacts[:10],  # First 10 for preview
+            "total_contacts": len(rows)
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/duplicate-filter/<int:filter_id>', methods=['POST'])
+def duplicate_filter():
+    """Duplicate an existing filter configuration"""
+    try:
+        data = request.json
+        return jsonify({"success": True, "message": "Filter duplicated"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/export-config', methods=['POST'])
+def export_config():
+    """Export filter configuration as JSON for reuse"""
+    try:
+        data = request.json
+        filter_messages = data.get('filter_messages', [])
+        
+        config = {
+            "version": "1.0",
+            "created_at": datetime.now().isoformat(),
+            "filters": filter_messages
+        }
+        
+        return jsonify({
+            "success": True,
+            "config": config
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/import-config', methods=['POST'])
+def import_config():
+    """Import previously saved filter configuration"""
+    try:
+        config = request.json
+        filters = config.get('filters', [])
+        
+        return jsonify({
+            "success": True,
+            "filters": filters
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 if __name__ == '__main__':

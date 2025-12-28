@@ -1,17 +1,17 @@
-# WhatsApp Bulk Sender
+# WhatsApp Bulk Sender - Dynamic Category System
 
-A professional Flask application to send bulk WhatsApp messages with personalization.
+A professional Flask application to send bulk WhatsApp messages with dynamic category-based messaging.
 
 ## Features
 
-✅ **Modern Web Interface** - Beautiful, responsive design  
-✅ **Bulk Messaging** - Send to multiple contacts at once  
-✅ **International Support** - Phone numbers with country codes (+91, +1, +44, etc.)  
-✅ **CSV Upload & Live Editing** - Upload CSV and edit contacts before sending  
+✅ **Dynamic Categories** - Automatically detects all columns as categories (Mehendi, Sangeet, Wedding, etc.)  
+✅ **Smart Filtering** - Send messages only to selected categories (Yes/No)  
+✅ **Live Summary** - See how many contacts in each category  
+✅ **CSV & Excel Support** - Upload CSV or Excel (.xlsx, .xls) files  
+✅ **Live Editing** - Edit contacts and categories before sending  
 ✅ **Personalization** - Use {name} placeholder in messages  
 ✅ **Real-time Status** - Monitor sending progress live  
-✅ **Scheduled Messages** - Set specific date/time for each message  
-✅ **Error Handling** - Comprehensive error tracking  
+✅ **Category Reports** - Detailed breakdown by category  
 
 ## Installation
 
@@ -23,86 +23,84 @@ A professional Flask application to send bulk WhatsApp messages with personaliza
    pip install -r requirements.txt
    ```
 
+3. Create sample file:
+
+   ```bash
+   python create_sample_excel.py
+   ```
+
+## File Format
+
+Your file should have minimum 2 columns (Name, Phone) + any number of category columns:
+
+**Excel Format (.xlsx/.xls):**
+
+| Name   | Phone        | Mehendi | Sangeet | Wedding | Reception |
+|--------|--------------|---------|---------|---------|-----------|
+| Ganesh | +919876543210 | Yes     | Yes     | Yes     | Yes       |
+| Priya  | +918765432109 | No      | Yes     | Yes     | Yes       |
+| Rahul  | +917654321098 | Yes     | No      | Yes     | Yes       |
+
+**CSV Format:**
+
+```csv
+Name,Phone,Mehendi,Sangeet,Wedding,Reception
+Ganesh,+919876543210,Yes,Yes,Yes,Yes
+Priya,+918765432109,No,Yes,Yes,Yes
+Rahul,+917654321098,Yes,No,Yes,Yes
+```
+
+- **Name**: Contact name (Column 1)
+- **Phone**: Phone WITH country code (Column 2, e.g., +919876543210)
+- **Categories**: Any additional columns (Yes/No for each)
+
 ## Usage
 
-1. Start the server:
+1. **Start server:**
 
    ```bash
    python app.py
    ```
 
-2. Open browser: `http://localhost:5000`
+2. **Open browser:** `http://localhost:5000`
 
-3. **Upload CSV** or **manually add contacts**
+3. **Upload file** - System automatically detects categories
 
-### CSV Format
+4. **Review summary** - See contact count per category
 
-Your CSV should have 3 columns (with header row):
+5. **Edit data** - Modify contacts/categories if needed
 
-```csv
-Name,Phone,Send
-John Doe,+919876543210,1
-Jane Smith,+14155551234,0
-Bob Wilson,+447911123456,1
-```
+6. **Configure messages** - Set message for each category
 
-- **Name**: Contact name
-- **Phone**: Phone number WITH country code (e.g., +919876543210, +14155551234)
-- **Send**: 1 = Send message, 0 = Skip
+7. **Start sending** - Monitor real-time progress
 
-4. Preview and edit contacts in the table
+## How It Works
 
-5. Configure messages (use {name} for personalization)
+1. **Upload file** → System detects Name, Phone, and all category columns
+2. **Summary shown** → See how many "Yes" in each category
+3. **Configure messages** → One message template per category
+4. **Smart sending** → Only sends to contacts with "Yes" in that category
 
-6. Set wait time between messages
+Example:
 
-7. Click "Start Sending"
+- Ganesh has "Yes" for Mehendi → Gets Mehendi message
+- Priya has "No" for Mehendi → Doesn't get Mehendi message
+- Both have "Yes" for Wedding → Both get Wedding message
 
-8. Monitor progress on status page
+## Accepted Values
+
+For category columns, these values mean **SEND MESSAGE**:
+
+- `Yes`
+- `Y`
+- `1`
+
+Any other value means **SKIP** (No, N, 0, blank, etc.)
 
 ## Important Notes
 
-⚠️ **WhatsApp Web**: Make sure WhatsApp Web is logged in  
-⚠️ **Phone Format**: MUST include country code with + sign (e.g., +919876543210)  
-⚠️ **Send Flag**: Use 1 to send, 0 to skip  
-⚠️ **Timing**: Messages are sent with delays to avoid spam detection  
-⚠️ **Testing**: Test with small batches first  
-
-## Phone Number Examples
-
-**Correct formats:**
-
-- India: `+919876543210`
-- USA: `+14155551234`
-- UK: `+447911123456`
-- Australia: `+61412345678`
-
-**Must include:**
-
-- Plus sign (+)
-- Country code
-- Full phone number
-
-## Configuration
-
-- **Wait Time**: Delay between messages (5-60 seconds, default: 10)
-- **Send Flag**: 1 = Send, 0 = Don't send
-
-## Troubleshooting
-
-**Messages not sending?**
-
-- Ensure WhatsApp Web is logged in
-- Verify phone numbers include + and country code
-- Check Send flag is 1 (not 0)
-- Increase wait time if needed
-
-**Job fails?**
-
-- Check logs for error details
-- Verify pywhatkit is installed correctly
-- Ensure browser automation is allowed
-
-## License
-
-MIT License - Free to use and modify
+⚠️ **WhatsApp Web** - Must be logged in before starting  
+⚠️ **Phone Format** - MUST include country code with + (e.g., +919876543210)  
+⚠️ **First Row** - Must be header row (Name, Phone, Category1, Category2, ...)  
+⚠️ **Categories** - All columns after Phone are treated as categories  
+⚠️ **Testing** - Test with 2-3 contacts first  
