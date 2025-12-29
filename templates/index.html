@@ -477,6 +477,7 @@
         };
 
         let filterMessageCount = 0;
+        let categoryValuesCache = {}; // Cache unique values per category
 
         async function handleFileSelect(event) {
             const file = event.target.files[0];
@@ -599,15 +600,12 @@
                     <h4 style="margin-bottom: 15px;">Build Your Filter:</h4>
                     <div id="filter-rows-${filterMessageCount}">
                         <div class="filter-row">
-                            <select class="filter-category" onchange="updateFilterPreview(${filterMessageCount})">
+                            <select class="filter-category" onchange="onCategoryChange(this, ${filterMessageCount})">
                                 <option value="">Select Category</option>
                                 ${uploadedData.categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('')}
                             </select>
-                            <select class="filter-value" onchange="updateFilterPreview(${filterMessageCount})">
+                            <select class="filter-value" onchange="updateFilterPreview(${filterMessageCount})" disabled>
                                 <option value="">Select Value</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                                <option value="Maybe">Maybe</option>
                             </select>
                             <button type="button" class="filter-remove-btn" onclick="removeFilterRow(this, ${filterMessageCount})">✕</button>
                         </div>
@@ -654,64 +652,44 @@
             const newRow = document.createElement('div');
             newRow.className = 'filter-row';
             newRow.innerHTML = `
-                <select class="filter-category" onchange="updateFilterPreview(${filterId})">
+                <select class="filter-category" onchange="onCategoryChange(this, ${filterId})">
                     <option value="">Select Category</option>
                     ${uploadedData.categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('')}
                 </select>
-                <select class="filter-value" onchange="updateFilterPreview(${filterId})">
+                <select class="filter-value" onchange="updateFilterPreview(${filterId})" disabled>
                     <option value="">Select Value</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                    <option value="Maybe">Maybe</option>
                 </select>
                 <button type="button" class="filter-remove-btn" onclick="removeFilterRow(this, ${filterId})">✕</button>
             `;
             container.appendChild(newRow);
         }
 
-        function removeFilterRow(btn, filterId) {
-            btn.closest('.filter-row').remove();
-            updateFilterPreview(filterId);
-        }
-
-        async function updateFilterPreview(filterId) {
-            const container = document.getElementById(`filter-rows-${filterId}`);
-            const rows = container.querySelectorAll('.filter-row');
-            const filters = {};
-            const previewParts = [];
+        async function onCategoryChange(selectElement, filterId) {
+            const category = selectElement.value;
+            const row = selectElement.closest('.filter-row');
+            const valueSelect = row.querySelector('.filter-value');
             
-            rows.forEach(row => {
-                const category = row.querySelector('.filter-category').value;
-                const value = row.querySelector('.filter-value').value;
-                
-                if (category && value) {
-                    filters[category] = value;
-                    previewParts.push(`${category}=${value}`);
-                }
-            });
-            
-            const preview = document.getElementById(`filter-preview-${filterId}`);
-            const hiddenInput = document.getElementById(`filter-data-${filterId}`);
-            
-            if (previewParts.length > 0) {
-                preview.innerHTML = `<strong>Filter:</strong> ${previewParts.join(' AND ')}`;
-                hiddenInput.value = JSON.stringify(filters);
-                
-                await fetchFilterPreview(filterId, filters);
-            } else {
-                preview.innerHTML = 'No filters set';
-                hiddenInput.value = '{}';
-                document.getElementById(`preview-panel-${filterId}`).style.display = 'none';
+            if (!category) {
+                valueSelect.disabled = true;
+                valueSelect.innerHTML = '<option value="">Select Value</option>';
+                updateFilterPreview(filterId);
+                return;
             }
-        }
-
-        async function fetchFilterPreview(filterId, filters) {
+            
+            // Check cache first
+            if (categoryValuesCache[category]) {
+                populateValueSelect(valueSelect, categoryValuesCache[category]);
+                valueSelect.disabled = false;
+                return;
+            }
+            
+            // Fetch unique values for this category
             try {
-                const response = await fetch('/preview-filter', {
+                const response = await fetch('/get-category-values', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        filters: filters,
+                        category: category,
                         headers: uploadedData.headers,
                         rows: uploadedData.rows
                     })
@@ -720,27 +698,20 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    const previewPanel = document.getElementById(`preview-panel-${filterId}`);
-                    const matchedCount = document.getElementById(`matched-count-${filterId}`);
-                    const matchedPercentage = document.getElementById(`matched-percentage-${filterId}`);
-                    const previewContacts = document.getElementById(`preview-contacts-${filterId}`);
-                    
-                    previewPanel.style.display = 'block';
-                    matchedCount.textContent = data.matched_count;
-                    matchedPercentage.textContent = ((data.matched_count / data.total_contacts) * 100).toFixed(1) + '%';
-                    
-                    if (data.matched_contacts.length > 0) {
-                        previewContacts.innerHTML = '<strong>Sample:</strong><br>' + 
-                            data.matched_contacts.map(c => 
-                                `<span class="contact-chip">${escapeHtml(c.name)}</span>`
-                            ).join('');
-                    } else {
-                        previewContacts.innerHTML = '<em style="color: #dc3545;">No matches</em>';
-                    }
+                    categoryValuesCache[category] = data.values;
+                    populateValueSelect(valueSelect, data.values);
+                    valueSelect.disabled = false;
+                } else {
+                    showError('Error loading category values: ' + data.error);
                 }
             } catch (error) {
-                console.error('Error:', error);
+                showError('Error loading category values: ' + error.message);
             }
+        }
+
+        function populateValueSelect(selectElement, values) {
+            selectElement.innerHTML = '<option value="">Select Value</option>' +
+                values.map(val => `<option value="${escapeHtml(val)}">${escapeHtml(val)}</option>`).join('');
         }
 
         function deleteFilterMessage(filterId) {
@@ -841,6 +812,94 @@
                 loadingIndicator.classList.remove('active');
             }
         });
+
+        function removeFilterRow(btn, filterId) {
+            const container = btn.closest('.filter-builder').querySelector(`#filter-rows-${filterId}`);
+            if (container && container.querySelectorAll('.filter-row').length > 1) {
+                btn.closest('.filter-row').remove();
+            } else {
+                btn.closest('.filter-row').remove();
+            }
+            updateFilterPreview(filterId);
+        }
+
+        async function updateFilterPreview(filterId) {
+            const container = document.getElementById(`filter-rows-${filterId}`);
+            if (!container) return;
+            
+            const rows = container.querySelectorAll('.filter-row');
+            const filters = {};
+            const previewParts = [];
+            
+            rows.forEach(row => {
+                const category = row.querySelector('.filter-category').value;
+                const value = row.querySelector('.filter-value').value;
+                
+                if (category && value) {
+                    filters[category] = value;
+                    previewParts.push(`${category}=${value}`);
+                }
+            });
+            
+            const preview = document.getElementById(`filter-preview-${filterId}`);
+            const hiddenInput = document.getElementById(`filter-data-${filterId}`);
+            
+            if (!preview || !hiddenInput) return;
+            
+            if (previewParts.length > 0) {
+                preview.innerHTML = `<strong>Filter:</strong> ${previewParts.join(' AND ')}`;
+                preview.style.display = 'block';
+                hiddenInput.value = JSON.stringify(filters);
+                
+                await fetchFilterPreview(filterId, filters);
+            } else {
+                preview.innerHTML = 'No filters set - Select category and value above';
+                preview.style.display = 'block';
+                hiddenInput.value = '{}';
+                const previewPanel = document.getElementById(`preview-panel-${filterId}`);
+                if (previewPanel) {
+                    previewPanel.style.display = 'none';
+                }
+            }
+        }
+
+        async function fetchFilterPreview(filterId, filters) {
+            try {
+                const response = await fetch('/preview-filter', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        filters: filters,
+                        headers: uploadedData.headers,
+                        rows: uploadedData.rows
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const previewPanel = document.getElementById(`preview-panel-${filterId}`);
+                    const matchedCount = document.getElementById(`matched-count-${filterId}`);
+                    const matchedPercentage = document.getElementById(`matched-percentage-${filterId}`);
+                    const previewContacts = document.getElementById(`preview-contacts-${filterId}`);
+                    
+                    previewPanel.style.display = 'block';
+                    matchedCount.textContent = data.matched_count;
+                    matchedPercentage.textContent = ((data.matched_count / data.total_contacts) * 100).toFixed(1) + '%';
+                    
+                    if (data.matched_contacts.length > 0) {
+                        previewContacts.innerHTML = '<strong>Sample:</strong><br>' + 
+                            data.matched_contacts.map(c => 
+                                `<span class="contact-chip">${escapeHtml(c.name)}</span>`
+                            ).join('');
+                    } else {
+                        previewContacts.innerHTML = '<em style="color: #dc3545;">No matches</em>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
     </script>
 </body>
 </html>

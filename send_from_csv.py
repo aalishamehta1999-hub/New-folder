@@ -16,11 +16,47 @@ def run_send_job(params, logger):
     filter_messages = params['filter_messages']
     wait_time = params['wait_time']
     
-    # Find Name and Phone column indices
-    name_col_idx = 0
-    phone_col_idx = 1
+    # Dynamically find Name and Phone column indices with priority
+    name_col_idx = -1
+    phone_col_idx = -1
+    
+    # First pass: Look for exact matches (case-insensitive)
+    for idx, header in enumerate(headers):
+        header_lower = header.lower().strip()
+        
+        # For name, prefer exact match first
+        if header_lower == 'name' and name_col_idx == -1:
+            name_col_idx = idx
+        
+        # For phone, prefer exact "phone" over "phone number"
+        if header_lower == 'phone' and phone_col_idx == -1:
+            phone_col_idx = idx
+    
+    # Second pass: If not found, look for partial matches
+    if name_col_idx == -1:
+        for idx, header in enumerate(headers):
+            if 'name' in header.lower():
+                name_col_idx = idx
+                break
+    
+    if phone_col_idx == -1:
+        for idx, header in enumerate(headers):
+            header_lower = header.lower()
+            if 'phone' in header_lower or 'mobile' in header_lower:
+                phone_col_idx = idx
+                break
+    
+    if name_col_idx == -1:
+        logger("❌ ERROR: Could not find 'Name' column in headers")
+        raise Exception("Name column not found. Please ensure your file has a column with 'Name' in the header.")
+    
+    if phone_col_idx == -1:
+        logger("❌ ERROR: Could not find 'Phone' column in headers")
+        raise Exception("Phone column not found. Please ensure your file has a column with 'Phone' in the header.")
     
     logger(f"📋 Headers: {', '.join(headers)}")
+    logger(f"✅ Name column detected at index {name_col_idx}: '{headers[name_col_idx]}'")
+    logger(f"✅ Phone column detected at index {phone_col_idx}: '{headers[phone_col_idx]}'")
     logger(f"📊 Total contacts: {len(rows)}")
     logger(f"🎯 Total filter combinations: {len(filter_messages)}")
     
@@ -40,13 +76,13 @@ def run_send_job(params, logger):
     
     for row_idx, row in enumerate(rows, 1):
         try:
-            if len(row) < 2:
+            if len(row) <= max(name_col_idx, phone_col_idx):
                 logger(f"⚠️ Row {row_idx}: Invalid row format, skipping")
                 skip_count += 1
                 continue
             
-            name = row[name_col_idx].strip()
-            phone = row[phone_col_idx].strip()
+            name = str(row[name_col_idx]).strip() if name_col_idx < len(row) else ''
+            phone = str(row[phone_col_idx]).strip() if phone_col_idx < len(row) else ''
             
             if not name or not phone:
                 logger(f"⚠️ Row {row_idx}: Missing name or phone, skipping")
@@ -109,8 +145,8 @@ def run_send_job(params, logger):
             
             # Send messages for each matched filter
             for msg_data in messages_to_send:
+                filter_id = msg_data['filter_id']
                 try:
-                    filter_id = msg_data['filter_id']
                     template = msg_data['message']
                     
                     # Replace placeholders

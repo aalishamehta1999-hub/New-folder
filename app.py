@@ -43,6 +43,9 @@ def parse_xlsx_file(filepath):
         workbook = openpyxl.load_workbook(filepath)
         sheet = workbook.active
         
+        if sheet is None:
+            raise Exception("No active sheet found in workbook")
+        
         # Get headers from first row
         headers = [str(cell.value).strip() if cell.value else f"Column{i}" 
                    for i, cell in enumerate(sheet[1], 1)]
@@ -93,6 +96,9 @@ def parse_excel():
         if not allowed_file(file.filename):
             return jsonify({"success": False, "error": "Invalid file type"}), 400
         
+        if file.filename is None:
+            return jsonify({"success": False, "error": "Invalid filename"}), 400
+        
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
@@ -112,10 +118,43 @@ def parse_excel():
             if not rows:
                 return jsonify({"success": False, "error": "File is empty"}), 400
             
-            # Identify category columns (columns after Name and Phone)
+            # Validate that Name and Phone columns exist (prefer exact matches)
+            name_col_idx = -1
+            phone_col_idx = -1
+            
+            # First: Look for exact matches
+            for idx, h in enumerate(headers):
+                h_lower = h.lower().strip()
+                if h_lower == 'name' and name_col_idx == -1:
+                    name_col_idx = idx
+                if h_lower == 'phone' and phone_col_idx == -1:
+                    phone_col_idx = idx
+            
+            # Second: Look for partial matches if not found
+            if name_col_idx == -1:
+                for idx, h in enumerate(headers):
+                    if 'name' in h.lower():
+                        name_col_idx = idx
+                        break
+            
+            if phone_col_idx == -1:
+                for idx, h in enumerate(headers):
+                    h_lower = h.lower()
+                    if 'phone' in h_lower or 'mobile' in h_lower:
+                        phone_col_idx = idx
+                        break
+            
+            if name_col_idx == -1:
+                return jsonify({"success": False, "error": "❌ Required column 'Name' not found in file headers"}), 400
+            
+            if phone_col_idx == -1:
+                return jsonify({"success": False, "error": "❌ Required column 'Phone' not found in file headers"}), 400
+            
+            # Identify category columns (all columns except the detected Name and Phone)
             categories = []
-            if len(headers) > 2:
-                categories = headers[2:]  # All columns after Name and Phone
+            for idx, header in enumerate(headers):
+                if idx != name_col_idx and idx != phone_col_idx:
+                    categories.append(header)
             
             return jsonify({
                 "success": True, 
@@ -318,6 +357,36 @@ def import_config():
         return jsonify({
             "success": True,
             "filters": filters
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/get-category-values', methods=['POST'])
+def get_category_values():
+    """Get unique values for a specific category column"""
+    try:
+        data = request.json
+        category = data.get('category')
+        headers = data.get('headers', [])
+        rows = data.get('rows', [])
+        
+        if category not in headers:
+            return jsonify({"success": False, "error": "Category not found"}), 400
+        
+        col_idx = headers.index(category)
+        
+        # Get unique non-empty values
+        unique_values = sorted(list(set([
+            str(row[col_idx]).strip() 
+            for row in rows 
+            if col_idx < len(row) and str(row[col_idx]).strip()
+        ])))
+        
+        return jsonify({
+            "success": True,
+            "values": unique_values
         })
         
     except Exception as e:
